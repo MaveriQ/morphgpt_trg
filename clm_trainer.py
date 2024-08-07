@@ -4,7 +4,7 @@ import transformers
 import datasets
 from transformers import TrainingArguments, Trainer
 from datasets import load_from_disk, Dataset
-from transformers import set_seed, AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers import set_seed, AutoConfig, AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
 from utils import H4ArgumentParser
 from dataclasses import dataclass
 from morphpiece import MorphPiece
@@ -17,7 +17,6 @@ from modeling_gpt2 import GPT2LMHeadModel
 # from determined.transformers import DetCallback
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class ModelArguments:
@@ -65,8 +64,8 @@ def main(model_args, training_args):
 
     config = AutoConfig.from_pretrained(model_args.model_name_or_path)
     config.n_positions = model_args.seq_len
-    # model = AutoModelForCausalLM.from_config(config)
-    model = GPT2LMHeadModel(config=config)
+    model = AutoModelForCausalLM.from_config(config)
+    # model = GPT2LMHeadModel(config=config)
     model.resize_token_embeddings(tokenizer.vocab_size)
 
     ###############
