@@ -8,9 +8,9 @@
             "name": "clm_trainer",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "clm_trainer.py",
             "console": "integratedTerminal",
-            "args": ["config.yaml"],
+            "args": ["configs/default_config.yaml"],
             "justMyCode": false
         }
     ]

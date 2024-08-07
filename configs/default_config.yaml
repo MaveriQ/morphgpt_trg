@@ -32,7 +32,7 @@ ddp_bucket_cap_mb: null
 ddp_find_unused_parameters: null
 ddp_timeout: 1800
 debug: []
-deepspeed: ds_config_stage1.json # changed from default null
+deepspeed: configs/ds_configs/ds_config_stage1.json # changed from default null
 disable_tqdm: false
 dispatch_batches: null
 do_eval: false

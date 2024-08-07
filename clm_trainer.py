@@ -4,12 +4,15 @@ import transformers
 import datasets
 from transformers import TrainingArguments, Trainer
 from datasets import load_from_disk, Dataset
-from transformers import set_seed, AutoConfig, AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
+from transformers import set_seed, AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from optimum.bettertransformer import BetterTransformer
 from utils import H4ArgumentParser
 from dataclasses import dataclass
 from morphpiece import MorphPiece
 
 from modeling_gpt2 import GPT2LMHeadModel
+from modeling_llama import LlamaForCausalLM
+
 # from transformers.integrations import TensorBoardCallback
 # from torch.utils.tensorboard import SummaryWriter
 # import determined as det
@@ -65,8 +68,10 @@ def main(model_args, training_args):
     config = AutoConfig.from_pretrained(model_args.model_name_or_path)
     config.n_positions = model_args.seq_len
     model = AutoModelForCausalLM.from_config(config)
+    # model = BetterTransformer.transform(model)
     # model = GPT2LMHeadModel(config=config)
-    model.resize_token_embeddings(tokenizer.vocab_size)
+    # model = LlamaForCausalLM(config=config)
+    model.resize_token_embeddings(tokenizer.vocab_size,pad_to_multiple_of=128)
 
     ###############
     # Setup dataset
