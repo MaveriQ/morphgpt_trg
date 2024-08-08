@@ -1,33 +1,49 @@
 import logging
 import sys
+from typing import Literal
 import transformers
 import datasets
 from transformers import TrainingArguments, Trainer
 from datasets import load_from_disk, Dataset
-from transformers import set_seed, AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from optimum.bettertransformer import BetterTransformer
+from transformers import set_seed, AutoConfig, AutoModelForCausalLM
 from utils import H4ArgumentParser
 from dataclasses import dataclass
-from morphpiece import MorphPiece
 
-from modeling_gpt2 import GPT2LMHeadModel
-from modeling_llama import LlamaForCausalLM
-
-# from transformers.integrations import TensorBoardCallback
-# from torch.utils.tensorboard import SummaryWriter
-# import determined as det
-# from determined.pytorch import dsat
-# from determined.transformers import DetCallback
+from TrapezoidLRScheduler import TrapezoidLRScheduler
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ModelArguments:
     model_name_or_path: str
-    dataset_location: str
+    dataset_name_or_path: str
     tokenizer_name_or_path: str
     seq_len: int
+    attn_implementation: Literal['eager', 'flash_attention_2', 'sdpa']
 
+
+class MorphPieceTrainer(Trainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def create_optimizer_and_scheduler(self, num_training_steps):
+
+        pct_start = (
+            self.args.warmup_steps/num_training_steps if self.args.warmup_steps > 0 else self.args.warmup_ratio
+        )
+        
+        if self.args.lr_scheduler_kwargs['step_cooldown']>0:
+            assert self.args.lr_scheduler_kwargs['step_cooldown']<=num_training_steps, f"cooldown start {self.args.lr_scheduler_kwargs['step_cooldown']} cannot be greater than total training steps : {num_training_steps}"
+        
+        self.lr_scheduler = TrapezoidLRScheduler(
+            optimizer=self.optimizer,
+            max_lr=self.args.learning_rate,
+            total_steps=num_training_steps,
+            pct_start=pct_start,
+            pct_cooldown=self.args.lr_scheduler_kwargs['pct_cooldown'],
+            step_cooldown=self.args.lr_scheduler_kwargs['step_cooldown'],
+            )
 
 # def main(det_callback, tb_callback, model_args, extra_args, training_args):
 def main(model_args, training_args):
@@ -55,38 +71,29 @@ def main(model_args, training_args):
     # Setup model and tokenizer
     ###########################
 
-    if 'morph' in model_args.tokenizer_name_or_path:
-        tokenizer = MorphPiece(data_dir=model_args.tokenizer_name_or_path)
-        logger.info(
-            f'Using MorphPiece from {model_args.tokenizer_name_or_path}')
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name_or_path)
-        logger.info(
-            f'Using AutoTokenizer from {model_args.tokenizer_name_or_path}')
-
     config = AutoConfig.from_pretrained(model_args.model_name_or_path)
     config.n_positions = model_args.seq_len
+    config.vocab_size = 50304
+    config._attn_implementation = model_args.attn_implementation
     model = AutoModelForCausalLM.from_config(config)
-    # model = BetterTransformer.transform(model)
     # model = GPT2LMHeadModel(config=config)
     # model = LlamaForCausalLM(config=config)
-    model.resize_token_embeddings(tokenizer.vocab_size,pad_to_multiple_of=128)
+    # model.resize_token_embeddings(tokenizer.vocab_size,pad_to_multiple_of=128)
 
     ###############
     # Setup dataset
     ###############
 
     dataset = load_from_disk(
-        f'/pfss/mlde/workspaces/mlde_wsp_MorphPiece/data/fineweb-edu/{model_args.dataset_location}')
+        f'/pfss/mlde/workspaces/mlde_wsp_MorphPiece/data/fineweb-edu/{model_args.dataset_name_or_path}')
     dataset.set_format('torch')
 
-    if model_args.seq_len==1024: # Default dataset block_size is 2048
+    if model_args.seq_len == 1024:  # Default dataset block_size is 2048
         dataset = Dataset.from_dict({'input_ids': dataset['input_ids'].reshape(-1, 1024),
                                     'labels': dataset['labels'].reshape(-1, 1024)})
 
     dataset = dataset.train_test_split(
-        test_size=0.01, seed=training_args.seed)
+        test_size=0.001, seed=training_args.seed)
 
     logger.info(
         f"Training on the following splits: {[split + ' : ' + str(dset.num_rows) for split, dset in dataset.items()]}"
@@ -103,7 +110,7 @@ def main(model_args, training_args):
     # Instantiate Trainer
     #####################
 
-    trainer = Trainer(
+    trainer = MorphPieceTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset["train"],
@@ -137,8 +144,9 @@ def main(model_args, training_args):
 
     kwargs = {
         "language": "en",
-        "tags": training_args.tags,
-        "dataset": model_args.dataset_name,
+        "license": "cc-by-nc-sa-4.0",
+        "tags": training_args.to_dict(),
+        "dataset": model_args.dataset_name_or_path,
     }
 
     if training_args.push_to_hub is True:

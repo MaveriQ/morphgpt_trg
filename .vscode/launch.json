@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "clm_trainer.py",
             "console": "integratedTerminal",
-            "args": ["configs/default_config.yaml"],
+            "args": ["configs/trainer_config.yaml"],
             "justMyCode": false
         }
     ]
